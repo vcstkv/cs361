@@ -126,6 +126,10 @@ python calculate-peer-review-grade.py teams.csv survey.csv gradebook.csv output.
 - Delete temporary data files when no longer needed
 - Rotate API tokens regularly
 
+## Acknowledgements
+
+Thanks to [Alex Ulbrich](https://github.com/adulbrich) for Peer Review scripts in R
+
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
