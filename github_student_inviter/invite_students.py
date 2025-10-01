@@ -7,7 +7,6 @@ Uses the 'SIS Login ID' field (email addresses) to send invitations.
 import os
 import sys
 import pandas as pd
-from github import Github, GithubException
 from dotenv import load_dotenv
 import time
 import requests
@@ -167,7 +166,7 @@ def main():
         sys.exit(1)
     
     if not org_name:
-        print("ℹ GitHub organization name not set in .env file")
+        print("GitHub organization name not set in .env file")
         org_name = input("Enter GitHub organization name: ").strip()
         if not org_name:
             print("✗ Organization name is required")
@@ -200,9 +199,19 @@ def main():
     # Authenticate with GitHub
     print(f"\n✓ Authenticating with GitHub...")
     try:
-        github_client = Github(github_token)
-        user = github_client.get_user()
-        print(f"✓ Authenticated as: {user.login}")
+        headers = {
+            'Authorization': f'token {github_token}',
+            'Accept': 'application/vnd.github.v3+json'
+        }
+        response = requests.get('https://api.github.com/user', headers=headers)
+        
+        if response.status_code == 200:
+            user_data = response.json()
+            print(f"✓ Authenticated as: {user_data['login']}")
+        else:
+            error_msg = response.json().get('message', 'Authentication failed')
+            print(f"✗ Authentication failed: {error_msg}")
+            sys.exit(1)
     except Exception as e:
         print(f"✗ Authentication failed: {e}")
         sys.exit(1)
@@ -219,7 +228,7 @@ def main():
     invite_to_organization(github_token, org_name, emails, dry_run)
     
     if dry_run:
-        print("ℹ This was a dry run. Use without --dry-run flag to actually send invitations.")
+        print("This was a dry run. Use without --dry-run flag to actually send invitations.")
 
 
 if __name__ == "__main__":

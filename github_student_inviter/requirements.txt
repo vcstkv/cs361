@@ -1,4 +1,3 @@
-PyGithub
 pandas
 python-dotenv
 requests
