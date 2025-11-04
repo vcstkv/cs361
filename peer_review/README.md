@@ -55,38 +55,37 @@ Processes Qualtrics peer evaluation survey results and calculates peer review gr
 
 The script expects a Qualtrics survey with the following structure:
 
-**Question 2** (Likert scale questions for each team member):
-- Q2_X_1: Does the member do an appropriate quantity of work?
-- Q2_X_2: How about the quality of the member's work?
-- Q2_X_3: Rate the member's attitude as a team player
-- Q2_X_4: Rate the overall value of the member's technical contribution
-- Q2_X_5: Would you want to work with this person on a project again?
+**Question 1** (Likert scale questions for each team member):
+- Q1_X_1: Does the member do an appropriate quantity of work?
+- Q1_X_2: How about the quality of the member's work?
+- Q1_X_3: Rate the member's attitude as a team player
+- Q1_X_4: Rate the overall value of the member's technical contribution
+- Q1_X_5: Would you want to work with this person on a project again?
 
-**Question 3** (Point distribution):
-- Q3_X: Divide 100 points among team members based on contribution
+**Question 2** (Point distribution):
+- Q2_X_1: Divide 100 points among team members based on contribution
+
+**Question 3** (Text answer):
+- Q3: Free-form text feedback about each team member
 
 (X ranges from 1 to 4, where 1 is self and 2-4 are team members)
 
 **Usage:**
 ```bash
-python calculate-peer-review-grade.py <groups_file> <survey_file> <gradebook_file> <output_file> <gradebook_output_file> [--plot-output <plot_file>]
+python calculate-peer-review-grade.py <groups_file> <survey_file> <output_file> [--plot-output <plot_file>]
 
 # Example:
 python calculate-peer-review-grade.py \
     data/CS362_S2025_Teams.csv \
     data/CS_362_001_S2025_Team_Peer_Evaluations.csv \
-    data/2025-06-10T0945_Grades-CS_362_001_S2025.csv \
     data/CS_362_001_S2025_Peer_Review_Grades.csv \
-    data/CS_362_001_S2025_Peer_Review_Grades_Gradebook.csv \
     --plot-output data/peer_eval_distribution.png
 ```
 
 **Arguments:**
 - `groups_file` - Canvas team data CSV
 - `survey_file` - Qualtrics survey results CSV
-- `gradebook_file` - Canvas gradebook CSV
-- `output_file` - Output file for detailed peer review grades
-- `gradebook_output_file` - Updated gradebook with peer evaluation scores
+- `output_file` - Output CSV file with Name, LastName, Email, Score, Q3
 - `--plot-output` - (Optional) Path for distribution visualization (default: `peer_evaluation_distribution.png`)
 
 **How it works:**
@@ -95,16 +94,17 @@ python calculate-peer-review-grade.py \
 3. For each student, aggregates peer evaluations from teammates
 4. Calculates mean scores for each question
 5. Normalizes and shifts scores using the formulas:
-   - Q2 questions: `(mean * 10) + 50` (normalized to ~50-100 scale)
-   - Q3 (points): `mean * team_size` then shifted using a quadratic function to prevent extreme scores
+   - Q1 questions (Likert scale): `(mean * 10) + 50` (normalized to ~50-100 scale)
+   - Q2 (point distribution): `mean * team_size` then shifted using a quadratic function to prevent extreme scores
 6. Calculates final `PeerEvaluationScore` as average of normalized scores
-7. Generates a histogram comparing original vs shifted Q3 distributions
-8. Merges scores into Canvas gradebook
-9. Sets default score of 60 for students with no peer evaluations
+7. Extracts Q3 text feedback from teammates
+8. Generates a histogram comparing original vs shifted Q2 distributions
+9. Outputs a simplified CSV with scores and Q3 text responses
 
 **Output Files:**
-- Detailed peer review data with individual question scores
-- Updated gradebook ready to import into Canvas
+- CSV file with columns: Name, Email, Score, Q3
+  - Score: Calculated peer evaluation score (0-1 scale)
+  - Q3: Text feedback from teammates (separated by | for multiple responses)
 - Histogram visualization of score distributions
 
 **Summary Statistics:**
@@ -166,28 +166,23 @@ pip install -r requirements.txt
    - After survey closes, export results from Qualtrics as CSV
    - Include all response data
 
-6. **Export Canvas gradebook**
-   - Download current gradebook from Canvas as CSV
-
-7. **Calculate peer review grades**
+6. **Calculate peer review grades**
    ```bash
    python calculate-peer-review-grade.py \
        data/canvas_teams.csv \
        data/qualtrics_survey_results.csv \
-       data/canvas_gradebook.csv \
        data/peer_review_grades.csv \
-       data/updated_gradebook.csv \
        --plot-output data/score_distribution.png
    ```
 
-8. **Review results**
-   - Check the output files for any anomalies
+7. **Review results**
+   - Check the output CSV file for scores and Q3 responses
    - Review the distribution plot
    - Examine summary statistics
 
-9. **Import grades to Canvas**
-   - Import the updated gradebook CSV to Canvas
-   - Verify the peer evaluation scores column
+8. **Import grades to Canvas**
+   - Use the Score column from the output CSV to manually enter or import peer evaluation grades
+   - Review individual Q3 responses if needed for student feedback
 
 ## Data Privacy
 
@@ -205,10 +200,10 @@ pip install -r requirements.txt
 - **Solution:** Verify that your input CSV files have the expected column names. Check the Canvas/Qualtrics export settings.
 
 **Issue:** Scores seem incorrect
-- **Solution:** Verify that the survey questions are properly mapped (Q2_X_1 through Q2_X_5, Q3_X). Check that team sizes match.
+- **Solution:** Verify that the survey questions are properly mapped (Q1_X_1 through Q1_X_5, Q2_X_1, Q3). Check that team sizes match.
 
 **Issue:** Empty peer evaluations
-- **Solution:** Some students may not have received evaluations if teammates didn't complete the survey. The script assigns a default score of 60 in the final gradebook.
+- **Solution:** Some students may not have received evaluations if teammates didn't complete the survey. Their scores will appear as NaN in the output CSV.
 
 **Issue:** Plot doesn't generate
 - **Solution:** Ensure matplotlib is installed correctly. Try running with a different output path.
