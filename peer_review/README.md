@@ -66,9 +66,9 @@ The script expects a Qualtrics survey with the following structure:
 - Q2_X_1: Divide 100 points among team members based on contribution
 
 **Question 3** (Text answer):
-- Q3: Free-form text feedback about each team member
+- Q3: Free-form text self-evaluation (student's own reflection on their performance)
 
-(X ranges from 1 to 4, where 1 is self and 2-4 are team members)
+Note: The script extracts Q3 from each student's own survey response as their self-evaluation text.
 
 **Usage:**
 ```bash
@@ -85,31 +85,34 @@ python calculate-peer-review-grade.py \
 **Arguments:**
 - `groups_file` - Canvas team data CSV
 - `survey_file` - Qualtrics survey results CSV
-- `output_file` - Output CSV file with Name, LastName, Email, Score, Q3
+- `output_file` - Output CSV file with Name, Email, PeerEvaluationScore, Q3
 - `--plot-output` - (Optional) Path for distribution visualization (default: `peer_evaluation_distribution.png`)
 
 **How it works:**
 1. Reads team sizes from Canvas data
 2. Processes Qualtrics survey responses
 3. For each student, aggregates peer evaluations from teammates
-4. Calculates mean scores for each question
+4. Calculates mean scores for each question (Q1_1 through Q1_5, and Q2)
 5. Normalizes and shifts scores using the formulas:
    - Q1 questions (Likert scale): `(mean * 10) + 50` (normalized to ~50-100 scale)
-   - Q2 (point distribution): `mean * team_size` then shifted using a quadratic function to prevent extreme scores
-6. Calculates final `PeerEvaluationScore` as average of normalized scores
-7. Extracts Q3 text feedback from teammates
+   - Q2 (point distribution): `mean * team_size`, then shifted using a quadratic function to prevent extreme scores (clamped between 10-40, then transformed)
+6. Calculates final `PeerEvaluationScore` as average of Q11-Q14 normalized scores and Q2_shifted (5 components total)
+7. Extracts Q3 text response (self-evaluation) from each student's own survey submission
 8. Generates a histogram comparing original vs shifted Q2 distributions
 9. Outputs a simplified CSV with scores and Q3 text responses
+10. Includes students from the groups file who didn't complete the survey (marked as "**NO SUBMISSION**" in Q3)
 
 **Output Files:**
-- CSV file with columns: Name, Email, Score, Q3
-  - Score: Calculated peer evaluation score (0-1 scale)
-  - Q3: Text feedback from teammates (separated by | for multiple responses)
-- Histogram visualization of score distributions
+- CSV file with columns: Name, Email, PeerEvaluationScore, Q3
+  - Name: Student name (Last, First format)
+  - Email: Student email address
+  - PeerEvaluationScore: Calculated peer evaluation score (typically 50-100 scale)
+  - Q3: Self-evaluation text response from the student's own survey submission (or "**NO SUBMISSION**" if they didn't complete the survey)
+- Histogram visualization comparing original vs shifted Q2 score distributions
 
 **Summary Statistics:**
 The script prints summary statistics including:
-- Total students evaluated
+- Total students (including those who didn't submit)
 - Mean, median, standard deviation of peer evaluation scores
 - Minimum and maximum scores
 
@@ -174,15 +177,19 @@ pip install -r requirements.txt
        data/peer_review_grades.csv \
        --plot-output data/score_distribution.png
    ```
+   
+   Note: The script will include all students from the teams file, even if they didn't complete the survey. Non-submitters will have "**NO SUBMISSION**" in the Q3 column and NaN for PeerEvaluationScore.
 
 7. **Review results**
    - Check the output CSV file for scores and Q3 responses
    - Review the distribution plot
    - Examine summary statistics
+   - Identify students who didn't submit (marked with "**NO SUBMISSION**")
 
 8. **Import grades to Canvas**
-   - Use the Score column from the output CSV to manually enter or import peer evaluation grades
-   - Review individual Q3 responses if needed for student feedback
+   - Use the PeerEvaluationScore column from the output CSV to manually enter or import peer evaluation grades
+   - Review individual Q3 self-evaluation responses if needed for student feedback
+   - Handle students with NaN scores (non-submitters) according to your course policy
 
 ## Data Privacy
 
@@ -202,8 +209,8 @@ pip install -r requirements.txt
 **Issue:** Scores seem incorrect
 - **Solution:** Verify that the survey questions are properly mapped (Q1_X_1 through Q1_X_5, Q2_X_1, Q3). Check that team sizes match.
 
-**Issue:** Empty peer evaluations
-- **Solution:** Some students may not have received evaluations if teammates didn't complete the survey. Their scores will appear as NaN in the output CSV.
+**Issue:** Empty peer evaluations or NaN scores
+- **Solution:** Students who didn't complete the survey will have "**NO SUBMISSION**" in Q3 and NaN for PeerEvaluationScore. Students whose teammates didn't complete the survey will also have NaN scores. Check the summary statistics to see how many students are affected.
 
 **Issue:** Plot doesn't generate
 - **Solution:** Ensure matplotlib is installed correctly. Try running with a different output path.

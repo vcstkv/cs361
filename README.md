@@ -40,10 +40,10 @@ Process team peer evaluations from Qualtrics surveys and calculate grades.
 
 **Features:**
 - Generate personalized Qualtrics contact lists
-- Calculate normalized peer review grades
-- Merge scores into Canvas gradebooks
+- Calculate normalized peer review grades from survey responses
+- Output CSV files ready for Canvas gradebook import
 - Visualize score distributions
-- Handle missing evaluations gracefully
+- Handle missing evaluations gracefully (includes non-submitters)
 
 **Quick Start:**
 ```bash
@@ -54,7 +54,7 @@ pip install -r requirements.txt
 python generate-peer-eval-contacts.py teams.csv contacts.csv
 
 # Calculate peer review grades
-python calculate-peer-review-grade.py teams.csv survey.csv gradebook.csv output.csv updated_gradebook.csv
+python calculate-peer-review-grade.py teams.csv survey.csv output.csv
 ```
 
 [📖 Full Documentation](peer_review/README.md)
@@ -110,10 +110,10 @@ python calculate-peer-review-grade.py teams.csv survey.csv gradebook.csv output.
 
 5. **Process results and calculate grades:**
    ```bash
-   python calculate-peer-review-grade.py teams.csv survey.csv gradebook.csv grades.csv updated_gradebook.csv
+   python calculate-peer-review-grade.py teams.csv survey.csv grades.csv
    ```
 
-6. **Import updated gradebook** to Canvas
+6. **Import grades to Canvas** using the output CSV file
 
 ## Data Privacy & Security
 
