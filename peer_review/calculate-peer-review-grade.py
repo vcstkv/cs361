@@ -307,21 +307,22 @@ def main():
     # Create visualization
     fig, ax = plt.subplots(figsize=(10, 6))
     
-    # Plot histograms
-    output['Q2_normalized'].dropna().hist(
-        bins=20, alpha=0.5, label='Original', color='#4285F4', ax=ax
-    )
-    output['Q2_shifted'].dropna().hist(
-        bins=20, alpha=0.5, label='Shifted', color='#DB4437', ax=ax
+    # Plot final peer evaluation score histogram
+    output['PeerEvaluationScore'].dropna().hist(
+        bins=20, alpha=0.7, color='#4285F4', ax=ax, edgecolor='black'
     )
     
-    ax.set_xlabel('Peer Evaluation Score', fontweight='bold')
+    ax.set_xlabel('Final Peer Evaluation Score', fontweight='bold')
     ax.set_ylabel('Count', fontweight='bold')
-    ax.set_title('Distribution of Peer Evaluation Scores\nOriginal vs Shifted (min = 50) distribution', 
+    ax.set_title('Distribution of Final Peer Evaluation Scores', 
                  fontweight='bold')
+    
+    # Add vertical lines for mean and median
+    mean_score = output['PeerEvaluationScore'].mean()
+    median_score = output['PeerEvaluationScore'].median()
+    ax.axvline(mean_score, color='red', linestyle='--', alpha=0.7, label=f'Mean: {mean_score:.1f}')
+    ax.axvline(median_score, color='orange', linestyle='--', alpha=0.7, label=f'Median: {median_score:.1f}')
     ax.legend(loc='upper right')
-    ax.text(0.5, -0.15, 'Data from Qualtrics Team Peer Review Survey',
-            transform=ax.transAxes, ha='center', fontsize=9, style='italic')
     
     plt.tight_layout()
     plt.savefig(args.plot_output, dpi=300, bbox_inches='tight')
