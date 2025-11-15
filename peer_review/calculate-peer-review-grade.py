@@ -300,7 +300,7 @@ def main():
         output = pd.concat([output, missing_rows], ignore_index=True)
     
     # Create final output dataframe
-    final_output = output[['Name', 'Email', 'PeerEvaluationScore', 'Q3']].copy()
+    final_output = output[['Name', 'Email', 'Team', 'PeerEvaluationScore', 'Q3']].copy()
     
     # Save simplified output
     final_output.to_csv(args.output_file, index=False)
