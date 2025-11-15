@@ -322,8 +322,8 @@ def main():
     # Add vertical lines for mean and median
     mean_score = output['PeerEvaluationScore'].mean()
     median_score = output['PeerEvaluationScore'].median()
-    ax.axvline(mean_score, color='red', linestyle='--', alpha=0.7, label=f'Mean: {mean_score:.1f}')
-    ax.axvline(median_score, color='orange', linestyle='--', alpha=0.7, label=f'Median: {median_score:.1f}')
+    ax.axvline(mean_score, color='red', linestyle='--', alpha=0.7, label=f'Mean: {mean_score:.3f}')
+    ax.axvline(median_score, color='orange', linestyle='--', alpha=0.7, label=f'Median: {median_score:.3f}')
     ax.legend(loc='upper right')
     
     plt.tight_layout()
