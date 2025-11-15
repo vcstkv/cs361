@@ -240,7 +240,9 @@ def main():
         output['Q13_normalized'] + 
         output['Q14_normalized'] + 
         output['Q2_shifted']
-    ) / 5
+    ) / 500 + 0.05
+
+    output['PeerEvaluationScore'] = output['PeerEvaluationScore'].round(2)
     
     # Add students from groups_file who didn't fill the survey
     survey_emails = set(output['Email'].values)
