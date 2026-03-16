@@ -6,10 +6,16 @@ This script:
 1. Reads team data and calculates team sizes
 2. Reads Qualtrics peer evaluation survey results
 3. Processes peer evaluation responses for each student
-4. Calculates mean scores and normalizes them
-5. Calculates final peer evaluation scores
-6. Creates visualizations
-7. Saves results with Name, Email, Score, and Q3 text responses
+4. Calculates mean scores for 5 Likert criteria (converted to 60-100 scale)
+5. Calculates 100-point distribution scores (normalized to 85-115% range)
+6. Calculates final peer evaluation scores as average of all 6 components
+7. Creates visualizations
+8. Saves results with Name, Email, Score, and Q3 text responses
+
+Scoring methodology:
+- Five criteria (Q1): 1-5 scale → 60-100 scale, averaged across teammates
+- Point distribution (Q2): Normalized for team size, clamped 10-40, formula applied
+- Final score: Average of 5 criteria scores + point distribution score
 """
 
 import pandas as pd
@@ -25,8 +31,10 @@ def extract_digit(text):
     return int(match.group(0)) if match else None
 
 
-### Question 1 (Likert scale questions)
+### Question 1 (Five Likert scale criteria)
 # X goes from 1 to 4, 1 is self, 2-4 are team members
+# Scoring: Convert 1-5 scale to 60-100 scale (1=60, 2=70, 3=80, 4=90, 5=100)
+# Final: Average ratings for each member (excluding self)
 
 # Does the member do an appropriate quantity of work?
 # labels[,Q1_X_1]
@@ -43,10 +51,17 @@ def extract_digit(text):
 # Would you want to work with this person on a project again?
 # labels[,Q1_X_5]
 
-### Question 2 (Point distribution)
+### Question 2 (100-point distribution)
 # Take 100 points, and divide them among the N team members, including yourself. Give points based on your opinion of what proportion of the credit each member deserves. You may consider quality and quantity of contributions, team-player attitude, and/or any aspects that you feel are relevant. You must give yourself at least 100/N points, whether you honestly feel you deserve them or not. (This is to avoid an unrealistic "self-incrimination" requirement.)
 # X goes from 1 to 4, 1 is self, 2-4 are team members
 # labels[,Q2_X_1]
+# 
+# Scoring process:
+# 1. Verify self-evaluation >= 100/N and total = 100
+# 2. Average ratings for each member (excluding self)
+# 3. Multiply by N, divide by 5 (normalize for team size)
+# 4. Clamp between 10-40 (ensures 85%-115% range)
+# 5. Apply formula: 0.65 + 0.022*x - 0.00025*x² then multiply by 100
 
 ### Question 3 (Text answer)
 # Free-form text answer about each team member
@@ -115,24 +130,72 @@ def main():
     # Add team size
     dt = dt.merge(team_sizes, on='Team', how='left')
     
-    # Initialize output dataframe
-    output = dt[['RecipientLastName', 'RecipientFirstName', 'RecipientEmail', 'Team', 'n']].copy()
+    # Initialize output dataframe with ALL students from groups file
+    output = all_students[['RecipientLastName', 'RecipientFirstName', 'RecipientEmail', 'Team']].copy()
+    output = output.merge(team_sizes, on='Team', how='left')
     output['Name'] = output['RecipientLastName'] + ', ' + output['RecipientFirstName']
     output['Email'] = output['RecipientEmail']
     
-    # Add Team Member columns if they exist
+    # Add Team Member columns from survey data if they exist
+    survey_team_members = {}
     for i in range(1, 4):
         col_name = f'Team Member {i}'
         if col_name in dt.columns:
-            output[col_name] = dt[col_name]
+            # Create a mapping from RecipientEmail to Team Member info
+            team_member_map = dt.set_index('RecipientEmail')[col_name].to_dict()
+            survey_team_members[col_name] = team_member_map
+    
+    # Add Team Member columns to output
+    for col_name, member_map in survey_team_members.items():
+        output[col_name] = output['Email'].map(member_map).fillna("")
     
     # Reorder columns
     cols = ['Name', 'Email', 'Team', 'n']
-    for i in range(1, 4):
-        col_name = f'Team Member {i}'
-        if col_name in output.columns:
-            cols.append(col_name)
+    for col_name in survey_team_members.keys():
+        cols.append(col_name)
     output = output[cols]
+    
+    # Identify students with valid submissions to ensure only their evaluations count
+    valid_evaluators = set()
+    for _, row in dt.iterrows():
+        # Check if this respondent has provided meaningful evaluations
+        # Count non-empty Q1 responses (Likert scale questions) for teammates (not self)
+        valid_q1_responses = 0
+        valid_q2_responses = 0
+        
+        for col in dt.columns:
+            # Check Q1 responses for teammates (Q1_2, Q1_3, Q1_4 etc - not Q1_1 which is self)
+            if col.startswith('Q1_') and not col.startswith('Q1_1_') and col.endswith(('_1', '_2', '_3', '_4', '_5')):
+                if pd.notna(row[col]) and str(row[col]).strip() not in ['', 'N/A', 'nan']:
+                    try:
+                        # Check if it's a valid numeric response
+                        value = float(row[col])
+                        if 1 <= value <= 5:  # Valid Likert scale range
+                            valid_q1_responses += 1
+                    except (ValueError, TypeError):
+                        pass
+            
+            # Check Q2 responses for teammates (point distribution)
+            elif col.startswith('Q2_') and not col.startswith('Q2_1_'):
+                if pd.notna(row[col]) and str(row[col]).strip() not in ['', 'N/A', 'nan']:
+                    try:
+                        value = float(row[col])
+                        if value >= 0:  # Valid point allocation
+                            valid_q2_responses += 1
+                    except (ValueError, TypeError):
+                        pass
+        
+        # Consider submission valid if they have at least some teammate evaluations
+        if valid_q1_responses >= 3 or valid_q2_responses >= 1:
+            valid_evaluators.add(row['RecipientEmail'])
+    
+    print(f"Found {len(valid_evaluators)} students with valid submissions out of {len(dt)} survey responses")
+    
+    # Show which students have invalid submissions (for transparency)
+    all_survey_emails = set(dt['RecipientEmail'].values)
+    invalid_evaluators = all_survey_emails - valid_evaluators
+    if invalid_evaluators:
+        print(f"Students with incomplete/invalid submissions (won't count as evaluators): {sorted(invalid_evaluators)}")
     
     # Initialize lists for storing peer evaluations
     output['Q11'] = [[] for _ in range(len(output))]
@@ -153,10 +216,12 @@ def main():
         if len(self_response) > 0:
             output.at[i, 'Q3'] = self_response.iloc[0].get('Q3', "")
         else:
-            output.at[i, 'Q3'] = ""
+            output.at[i, 'Q3'] = "**NO SUBMISSION**"
         
-        # Get all evaluations from teammates (excluding self)
-        results = dt[(dt['Team'] == team) & (dt['RecipientEmail'] != email)].copy()
+        # Get all evaluations from teammates (excluding self) who have valid submissions
+        results = dt[(dt['Team'] == team) & 
+                    (dt['RecipientEmail'] != email) & 
+                    (dt['RecipientEmail'].isin(valid_evaluators))].copy()
         
         if len(results) == 0:
             # If no results, leave lists empty (will become NA)
@@ -218,86 +283,37 @@ def main():
     output['Q15_mean'] = output['Q15'].apply(calculate_mean)
     output['Q2_mean'] = output['Q2'].apply(calculate_mean)
     
-    # Normalize scores
+    # Convert Likert scale ratings to 60-100 scale (1=60, 2=70, 3=80, 4=90, 5=100)
     output['Q11_normalized'] = (output['Q11_mean'] * 10) + 50
     output['Q12_normalized'] = (output['Q12_mean'] * 10) + 50
     output['Q13_normalized'] = (output['Q13_mean'] * 10) + 50
     output['Q14_normalized'] = (output['Q14_mean'] * 10) + 50
     output['Q15_normalized'] = (output['Q15_mean'] * 10) + 50
-    output['Q2_normalized'] = output['Q2_mean'] * output['n']
     
-    # Shift Q2 scores
-    output['Q2_shifted'] = output['Q2_normalized'] / 5
-    output.loc[output['Q2_shifted'] < 10, 'Q2_shifted'] = 10
-    output.loc[output['Q2_shifted'] > 40, 'Q2_shifted'] = 40
-    output['Q2_shifted'] = (0.65 + (0.0225 * output['Q2_shifted']) - 
-                            (0.00025 * output['Q2_shifted'] ** 2)) * 100
+    # Process 100-point distribution scores
+    # Step 1: Multiply by team size N, then divide by 5
+    output['Q2_adjusted'] = (output['Q2_mean'] * output['n']) / 5
     
-    # Calculate final peer evaluation score
+    # Step 2: Clamp between 10 and 40
+    output['Q2_clamped'] = output['Q2_adjusted'].copy()
+    output.loc[output['Q2_clamped'] < 10, 'Q2_clamped'] = 10
+    output.loc[output['Q2_clamped'] > 40, 'Q2_clamped'] = 40
+    
+    # Step 3: Apply the formula: 0.65 + 0.022 * x - 0.00025 * x^2, then convert to percentage
+    output['Q2_score'] = (0.65 + (0.022 * output['Q2_clamped']) - 
+                          (0.00025 * output['Q2_clamped'] ** 2)) * 100
+    
+    # Calculate final peer evaluation score as average of 5 criteria and point distribution score
     output['PeerEvaluationScore'] = (
         output['Q11_normalized'] + 
         output['Q12_normalized'] + 
         output['Q13_normalized'] + 
         output['Q14_normalized'] + 
-        output['Q2_shifted']
-    ) / 500 + 0.05
+        output['Q15_normalized'] + 
+        output['Q2_score']
+    ) / 600 + 0.05
 
     output['PeerEvaluationScore'] = output['PeerEvaluationScore'].round(2)
-    
-    # Add students from groups_file who didn't fill the survey
-    survey_emails = set(output['Email'].values)
-    all_student_emails = set(all_students['RecipientEmail'].values)
-    missing_emails = all_student_emails - survey_emails
-    
-    if len(missing_emails) > 0:
-        # Create rows for missing students
-        missing_students = all_students[all_students['RecipientEmail'].isin(missing_emails)].copy()
-        missing_students['Name'] = missing_students['RecipientLastName'] + ', ' + missing_students['RecipientFirstName']
-        missing_students = missing_students.merge(team_sizes, on='Team', how='left')
-        
-        # Initialize with empty/default values
-        missing_rows = pd.DataFrame({
-            'RecipientLastName': missing_students['RecipientLastName'],
-            'RecipientFirstName': missing_students['RecipientFirstName'],
-            'RecipientEmail': missing_students['RecipientEmail'],
-            'Team': missing_students['Team'],
-            'n': missing_students['n'],
-            'Name': missing_students['Name'],
-            'Email': missing_students['RecipientEmail'],
-            'Q11': [[] for _ in range(len(missing_students))],
-            'Q12': [[] for _ in range(len(missing_students))],
-            'Q13': [[] for _ in range(len(missing_students))],
-            'Q14': [[] for _ in range(len(missing_students))],
-            'Q15': [[] for _ in range(len(missing_students))],
-            'Q2': [[] for _ in range(len(missing_students))],
-            'Q3': "**NO SUBMISSION**",
-            'Q11_mean': np.nan,
-            'Q12_mean': np.nan,
-            'Q13_mean': np.nan,
-            'Q14_mean': np.nan,
-            'Q15_mean': np.nan,
-            'Q2_mean': np.nan,
-            'Q11_normalized': np.nan,
-            'Q12_normalized': np.nan,
-            'Q13_normalized': np.nan,
-            'Q14_normalized': np.nan,
-            'Q15_normalized': np.nan,
-            'Q2_normalized': np.nan,
-            'Q2_shifted': np.nan,
-            'PeerEvaluationScore': np.nan
-        })
-        
-        # Add Team Member columns if they exist in output
-        for i in range(1, 4):
-            col_name = f'Team Member {i}'
-            if col_name in output.columns:
-                missing_rows[col_name] = ""
-        
-        # Reorder columns to match output
-        missing_rows = missing_rows[output.columns]
-        
-        # Append missing students to output
-        output = pd.concat([output, missing_rows], ignore_index=True)
     
     # Create final output dataframe
     final_output = output[['Name', 'Email', 'Team', 'PeerEvaluationScore', 'Q3']].copy()
@@ -334,11 +350,27 @@ def main():
     # Print summary statistics
     print("\n=== Summary Statistics ===")
     print(f"Total students: {len(output)}")
-    print(f"Mean peer evaluation score: {output['PeerEvaluationScore'].mean():.2f}")
-    print(f"Median peer evaluation score: {output['PeerEvaluationScore'].median():.2f}")
-    print(f"Std deviation: {output['PeerEvaluationScore'].std():.2f}")
-    print(f"Min score: {output['PeerEvaluationScore'].min():.2f}")
-    print(f"Max score: {output['PeerEvaluationScore'].max():.2f}")
+    print(f"Students with peer evaluation scores: {output['PeerEvaluationScore'].notna().sum()}")
+    print(f"Students without scores (no valid evaluations received): {output['PeerEvaluationScore'].isna().sum()}")
+    
+    # Calculate evaluation counts
+    evaluation_counts = []
+    for i, row in output.iterrows():
+        count = len([x for x in row['Q11'] if pd.notna(x)])
+        evaluation_counts.append(count)
+    output['EvaluationsReceived'] = evaluation_counts
+    
+    print(f"Average evaluations received per student: {np.mean(evaluation_counts):.1f}")
+    
+    if output['PeerEvaluationScore'].notna().any():
+        valid_scores = output['PeerEvaluationScore'].dropna()
+        print(f"Mean peer evaluation score: {valid_scores.mean():.2f}")
+        print(f"Median peer evaluation score: {valid_scores.median():.2f}")
+        print(f"Std deviation: {valid_scores.std():.2f}")
+        print(f"Min score: {valid_scores.min():.2f}")
+        print(f"Max score: {valid_scores.max():.2f}")
+    else:
+        print("No valid peer evaluation scores calculated")
 
 
 if __name__ == "__main__":
